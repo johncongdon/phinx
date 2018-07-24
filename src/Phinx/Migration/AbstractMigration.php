@@ -46,6 +46,10 @@ use Symfony\Component\Console\Output\OutputInterface;
 abstract class AbstractMigration implements MigrationInterface
 {
     /**
+     * @var string
+     */
+    protected $environment;
+    /**
      * @var float
      */
     protected $version;
@@ -75,16 +79,20 @@ abstract class AbstractMigration implements MigrationInterface
     /**
      * Class Constructor.
      *
+     * @param string $environment Environment Detected
      * @param int $version Migration Version
      * @param \Symfony\Component\Console\Input\InputInterface|null $input
      * @param \Symfony\Component\Console\Output\OutputInterface|null $output
      */
-    final public function __construct($version, InputInterface $input = null, OutputInterface $output = null)
+    final public function __construct($environment, $version, InputInterface $input = null, OutputInterface $output = null)
     {
+        $this->environment = $environment;
         $this->version = $version;
+
         if (!is_null($input)) {
             $this->setInput($input);
         }
+
         if (!is_null($output)) {
             $this->setOutput($output);
         }
@@ -98,20 +106,6 @@ abstract class AbstractMigration implements MigrationInterface
      * @return void
      */
     protected function init()
-    {
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function up()
-    {
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function down()
     {
     }
 
@@ -180,6 +174,14 @@ abstract class AbstractMigration implements MigrationInterface
     /**
      * {@inheritdoc}
      */
+    public function getEnvironment()
+    {
+        return $this->environment;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function setVersion($version)
     {
         $this->version = $version;
@@ -232,6 +234,14 @@ abstract class AbstractMigration implements MigrationInterface
     /**
      * {@inheritdoc}
      */
+    public function getQueryBuilder()
+    {
+        return $this->getAdapter()->getQueryBuilder();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function fetchRow($sql)
     {
         return $this->getAdapter()->fetchRow($sql);
@@ -250,6 +260,7 @@ abstract class AbstractMigration implements MigrationInterface
      */
     public function insert($table, $data)
     {
+        trigger_error('insert() is deprecated since 0.10.0. Use $this->table($tableName)->insert($data)->save() instead.', E_USER_DEPRECATED);
         // convert to table object
         if (is_string($table)) {
             $table = new Table($table, [], $this->getAdapter());
@@ -292,11 +303,36 @@ abstract class AbstractMigration implements MigrationInterface
     /**
      * A short-hand method to drop the given database table.
      *
+     * @deprecated since 0.10.0. Use $this->table($tableName)->drop()->save() instead.
      * @param string $tableName Table Name
      * @return void
      */
     public function dropTable($tableName)
     {
-        $this->table($tableName)->drop();
+        trigger_error('dropTable() is deprecated since 0.10.0. Use $this->table($tableName)->drop()->save() instead.', E_USER_DEPRECATED);
+        $this->table($tableName)->drop()->save();
+    }
+
+    /**
+     * Perform checks on the migration, print a warning
+     * if there are potential problems.
+     *
+     * Right now, the only check is if there is both a `change()` and
+     * an `up()` or a `down()` method.
+     *
+     * @param string|null $direction
+     *
+     * @return void
+     */
+    public function preFlightCheck($direction = null)
+    {
+        if (method_exists($this, MigrationInterface::CHANGE)) {
+            if (method_exists($this, MigrationInterface::UP) ||
+                method_exists($this, MigrationInterface::DOWN) ) {
+                $this->output->writeln(sprintf(
+                    '<comment>warning</comment> Migration contains both change() and/or up()/down() methods.  <options=bold>Ignoring up() and down()</>.'
+                ));
+            }
+        }
     }
 }
